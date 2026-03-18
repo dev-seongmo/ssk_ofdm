@@ -51,16 +51,16 @@ for i = 1:length(SNR)
         hx2 = conv(h2, x);
 
         % 노이즈 첨가
-        y1 = awgn(hx1, SNR(i));
-        y2 = awgn(hx2, SNR(i));
+        y1 = awgn_noise(hx1, SNR(i));
+        y2 = awgn_noise(hx2, SNR(i));
 
         % CP 제거
         y_cp_removed1 = y1(GI_Size + 1:GI_Size + FFT_Size); % 33~160 까지 총 128개
         y_cp_removed2 = y2(GI_Size + 1:GI_Size + FFT_Size);
 
         % FFT
-        Y_fft1 = fft(y_cp_removed1) / sqrt(FFT_Size)/sqrt(2);
-        Y_fft2 = fft(y_cp_removed2) / sqrt(FFT_Size)/sqrt(2);
+        Y_fft1 = fft(y_cp_removed1) / sqrt(FFT_Size);
+        Y_fft2 = fft(y_cp_removed2) / sqrt(FFT_Size);
 
         H1 = fft(h1, FFT_Size);
         H2 = fft(h2, FFT_Size);
@@ -137,8 +137,8 @@ for i = 1:length(SNR)
         hx2_SSKM = conv(h2, x_SSKM);
 
         % 노이즈 첨가
-        y1_SSKM = awgn(hx1_SSKM, SNR(i));
-        y2_SSKM = awgn(hx2_SSKM, SNR(i));
+        y1_SSKM = awgn_noise(hx1_SSKM, SNR(i));
+        y2_SSKM = awgn_noise(hx2_SSKM, SNR(i));
 
         % CP 제거
         y_cp_removed1_SSKM = y1_SSKM(GI_Size_SSKM + 1:GI_Size_SSKM + FFT_Size_SSKM);
@@ -167,7 +167,7 @@ for i = 1:length(SNR)
         % MRC 알고리즘
         W1_SSKM = conj(H1_SSKM);
         W2_SSKM = conj(H2_SSKM);
-        Y_MRC_SSKM = (Y_fft1_SSKM .* W1_SSKM + Y_fft2_SSKM .* W2_SSKM)*sqrt(2);
+        Y_MRC_SSKM = (Y_fft1_SSKM .* W1_SSKM + Y_fft2_SSKM .* W2_SSKM);
         H_mrc_SSKM = abs(H1_SSKM).^2 + abs(H2_SSKM).^2; 
 
         % Equalizer
@@ -218,10 +218,10 @@ function deSSK = deSSK(Data)
     deSSK = zeros(1, length(Data)/2);
 
     for i = 1 : length(Data)/2
-        if Data(2*i-1) == 1
+        if Data(2*i-1) > Data(2*i)
             deSSK(1, i) = 1;
         else
-         deSSK(1, i) = 0;
+            deSSK(1, i) = 0;
         end
     end
 end

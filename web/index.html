@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSK OFDM Simulator</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero">
+      <p class="eyebrow">Interactive BER Lab</p>
+      <h1>SSK / OFDM Assignment Simulator</h1>
+      <p class="hero-copy">
+        A browser-based playground for testing the core MATLAB assignment logic.
+        Change parameters and compare BER curves instantly.
+      </p>
+    </section>
+
+    <section class="control-card">
+      <div class="control-grid">
+        <label>
+          <span>Scenario</span>
+          <select id="scenario">
+            <option value="assignment2">Assignment 2: SISO-OFDM</option>
+            <option value="assignment3" selected>Assignment 3: SC / MRC / SSKM</option>
+          </select>
+        </label>
+
+        <label>
+          <span>FFT Size</span>
+          <input id="fftSize" type="number" min="32" step="32" value="128">
+        </label>
+
+        <label>
+          <span>GI Ratio</span>
+          <select id="giRatio">
+            <option value="0.125">1/8</option>
+            <option value="0.25" selected>1/4</option>
+            <option value="0.5">1/2</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Modulation</span>
+          <select id="modulationOrder">
+            <option value="2">QPSK</option>
+            <option value="4" selected>16QAM</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Multipath</span>
+          <input id="multiPath" type="number" min="1" max="16" value="7">
+        </label>
+
+        <label>
+          <span>Iterations</span>
+          <input id="iterations" type="number" min="20" max="3000" step="20" value="300">
+        </label>
+
+        <label>
+          <span>SNR Start</span>
+          <input id="snrStart" type="number" min="0" max="30" step="1" value="0">
+        </label>
+
+        <label>
+          <span>SNR End</span>
+          <input id="snrEnd" type="number" min="0" max="36" step="1" value="30">
+        </label>
+
+        <label>
+          <span>SNR Step</span>
+          <input id="snrStep" type="number" min="1" max="12" step="1" value="3">
+        </label>
+
+        <label>
+          <span>Random Seed</span>
+          <input id="seed" type="number" min="1" step="1" value="20260318">
+        </label>
+      </div>
+
+      <div class="button-row">
+        <button id="runButton" type="button">Run Simulation</button>
+        <button id="fillPresetButton" type="button" class="secondary">Load A3 Preset</button>
+      </div>
+    </section>
+
+    <section class="dashboard">
+      <article class="panel chart-panel">
+        <div class="panel-head">
+          <h2>BER Curve</h2>
+          <p id="statusText">Idle</p>
+        </div>
+        <canvas id="chartCanvas" width="920" height="460" aria-label="BER chart"></canvas>
+        <div id="legend" class="legend"></div>
+      </article>
+
+      <article class="panel summary-panel">
+        <h2>Summary</h2>
+        <div id="summaryCards" class="summary-cards"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>SNR (dB)</th>
+                <th id="resultsHeader">BER</th>
+              </tr>
+            </thead>
+            <tbody id="resultsTable"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="notes panel">
+      <h2>Notes</h2>
+      <p>
+        This page recreates the MATLAB assignment flow in JavaScript for interactive experiments.
+        It uses a Rayleigh multipath channel, complex Gaussian noise, and one-tap equalization.
+      </p>
+      <p>
+        Assignment 3 mode computes SC, MRC, SSKM-SC, and SSKM-MRC together.
+        The default iteration count is lower than MATLAB so the browser stays responsive.
+      </p>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
