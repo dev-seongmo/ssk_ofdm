@@ -4,28 +4,62 @@ const palette = {
   sskmSc: "#7c3aed",
   sskmMrc: "#b42318",
   siso: "#0f766e",
+  ref: "#0f766e",
+  rx: "#b45309",
+};
+
+const presets = {
+  assignment2: {
+    fftSize: 128,
+    giRatio: 0.25,
+    modulationOrder: 4,
+    multiPath: 7,
+    snrStart: 0,
+    snrEnd: 30,
+    snrStep: 3,
+  },
+  assignment3: {
+    fftSize: 128,
+    giRatio: 0.25,
+    modulationOrder: 4,
+    multiPath: 7,
+    snrStart: 0,
+    snrEnd: 30,
+    snrStep: 3,
+  },
 };
 
 const dom = {
   scenario: document.getElementById("scenario"),
-  fftSize: document.getElementById("fftSize"),
-  giRatio: document.getElementById("giRatio"),
-  modulationOrder: document.getElementById("modulationOrder"),
-  multiPath: document.getElementById("multiPath"),
-  iterations: document.getElementById("iterations"),
-  snrStart: document.getElementById("snrStart"),
-  snrEnd: document.getElementById("snrEnd"),
-  snrStep: document.getElementById("snrStep"),
+  berTargetIterations: document.getElementById("berTargetIterations"),
+  berTargetIterationsValue: document.getElementById("berTargetIterationsValue"),
   seed: document.getElementById("seed"),
   runButton: document.getElementById("runButton"),
-  fillPresetButton: document.getElementById("fillPresetButton"),
+  presetButton: document.getElementById("presetButton"),
+  berTopControls: document.getElementById("berTopControls"),
   chartCanvas: document.getElementById("chartCanvas"),
+  constellationCanvas: document.getElementById("constellationCanvas"),
   legend: document.getElementById("legend"),
-  summaryCards: document.getElementById("summaryCards"),
+  liveCards: document.getElementById("liveCards"),
+  fixedConfig: document.getElementById("fixedConfig"),
   resultsTable: document.getElementById("resultsTable"),
   resultsHeader: document.getElementById("resultsHeader"),
   statusText: document.getElementById("statusText"),
+  assignment1Status: document.getElementById("assignment1Status"),
+  assignment1Metrics: document.getElementById("assignment1Metrics"),
+  berSection: document.getElementById("berSection"),
+  assignment1Section: document.getElementById("assignment1Section"),
+  a1SampleCount: document.getElementById("a1SampleCount"),
+  a1ChannelGain: document.getElementById("a1ChannelGain"),
+  a1ChannelPhase: document.getElementById("a1ChannelPhase"),
+  a1NoiseSigma: document.getElementById("a1NoiseSigma"),
+  a1SampleCountValue: document.getElementById("a1SampleCountValue"),
+  a1ChannelGainValue: document.getElementById("a1ChannelGainValue"),
+  a1ChannelPhaseValue: document.getElementById("a1ChannelPhaseValue"),
+  a1NoiseSigmaValue: document.getElementById("a1NoiseSigmaValue"),
 };
+
+let runToken = 0;
 
 class RNG {
   constructor(seed) {
@@ -87,9 +121,7 @@ function div(a, b) {
 
 function fft(input) {
   const n = input.length;
-  if (n <= 1) {
-    return input.slice();
-  }
+  if (n <= 1) return input.slice();
 
   const even = [];
   const odd = [];
@@ -113,40 +145,27 @@ function fft(input) {
 }
 
 function ifft(input) {
-  const conjugated = input.map(conj);
-  const transformed = fft(conjugated).map(conj);
-  return transformed.map((value) => scale(value, 1 / input.length));
+  return fft(input.map(conj)).map(conj).map((value) => scale(value, 1 / input.length));
 }
 
 function convolve(signal, channel) {
-  const out = Array.from(
-    { length: signal.length + channel.length - 1 },
-    () => complex(0, 0),
-  );
-
+  const out = Array.from({ length: signal.length + channel.length - 1 }, () => complex(0, 0));
   for (let i = 0; i < signal.length; i += 1) {
     for (let j = 0; j < channel.length; j += 1) {
       out[i + j] = add(out[i + j], mul(signal[i], channel[j]));
     }
   }
-
   return out;
 }
 
 function createSnrRange(start, end, step) {
   const values = [];
-  for (let snr = start; snr <= end + 1e-9; snr += step) {
-    values.push(Number(snr.toFixed(6)));
-  }
+  for (let snr = start; snr <= end + 1e-9; snr += step) values.push(Number(snr.toFixed(6)));
   return values;
 }
 
 function randomBits(length, rng) {
-  const bits = new Array(length);
-  for (let i = 0; i < length; i += 1) {
-    bits[i] = rng.next() > 0.5 ? 1 : 0;
-  }
-  return bits;
+  return Array.from({ length }, () => (rng.next() > 0.5 ? 1 : 0));
 }
 
 function rayleighChannel(multiPath, rng) {
@@ -177,10 +196,8 @@ function addAwgn(signal, snrDb, rng) {
 function qpskMod(bits) {
   const symbols = [];
   for (let i = 0; i < bits.length; i += 2) {
-    const imagBit = bits[i];
-    const realBit = bits[i + 1];
-    const imag = imagBit ? 1 : -1;
-    const real = realBit ? 1 : -1;
+    const imag = bits[i] ? 1 : -1;
+    const real = bits[i + 1] ? 1 : -1;
     symbols.push(complex(real * 0.7071, imag * 0.7071));
   }
   return symbols;
@@ -188,10 +205,10 @@ function qpskMod(bits) {
 
 function qpskDemod(symbols) {
   const bits = [];
-  for (const symbol of symbols) {
+  symbols.forEach((symbol) => {
     bits.push(symbol.im > 0 ? 1 : 0);
     bits.push(symbol.re > 0 ? 1 : 0);
-  }
+  });
   return bits;
 }
 
@@ -213,12 +230,12 @@ function qam16Mod(bits) {
 
 function qam16Demod(symbols) {
   const bits = [];
-  for (const symbol of symbols) {
+  symbols.forEach((symbol) => {
     bits.push(symbol.re > 0 ? 1 : 0);
     bits.push(Math.abs(symbol.re) < 0.6325 ? 1 : 0);
     bits.push(symbol.im > 0 ? 1 : 0);
     bits.push(Math.abs(symbol.im) < 0.6325 ? 1 : 0);
-  }
+  });
   return bits;
 }
 
@@ -230,6 +247,41 @@ function baseDemod(symbols, modulationOrder) {
   return modulationOrder === 2 ? qpskDemod(symbols) : qam16Demod(symbols);
 }
 
+function nearestConstellationDemod(symbols, modulationOrder) {
+  const bitsPerSymbol = modulationOrder;
+  const referenceBits = [];
+  const totalSymbols = 2 ** bitsPerSymbol;
+
+  for (let value = 0; value < totalSymbols; value += 1) {
+    const symbolBits = [];
+    for (let bitIndex = bitsPerSymbol - 1; bitIndex >= 0; bitIndex -= 1) {
+      symbolBits.push((value >> bitIndex) & 1);
+    }
+    referenceBits.push(symbolBits);
+  }
+
+  const flattened = referenceBits.flat();
+  const references = baseMod(flattened, modulationOrder);
+  const demodBits = [];
+
+  symbols.forEach((symbol) => {
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < references.length; index += 1) {
+      const diffRe = symbol.re - references[index].re;
+      const diffIm = symbol.im - references[index].im;
+      const distance = diffRe * diffRe + diffIm * diffIm;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    }
+    demodBits.push(...referenceBits[bestIndex]);
+  });
+
+  return demodBits;
+}
+
 function addCyclicPrefix(ofdm, giSize) {
   return ofdm.slice(ofdm.length - giSize).concat(ofdm);
 }
@@ -239,13 +291,11 @@ function removeCyclicPrefix(rx, giSize, fftSize) {
 }
 
 function normalizeIfft(symbols) {
-  const factor = Math.sqrt(symbols.length);
-  return ifft(symbols).map((value) => scale(value, factor));
+  return ifft(symbols).map((value) => scale(value, Math.sqrt(symbols.length)));
 }
 
 function normalizeFft(samples) {
-  const factor = Math.sqrt(samples.length);
-  return fft(samples).map((value) => scale(value, 1 / factor));
+  return fft(samples).map((value) => scale(value, 1 / Math.sqrt(samples.length)));
 }
 
 function channelResponse(channel, fftSize) {
@@ -256,9 +306,7 @@ function channelResponse(channel, fftSize) {
 function countBitErrors(a, b) {
   let count = 0;
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) {
-      count += 1;
-    }
+    if (a[i] !== b[i]) count += 1;
   }
   return count;
 }
@@ -286,11 +334,7 @@ function mrcCombine(receivedA, receivedB, channelA, channelB) {
   const combined = [];
   const denom = [];
   for (let i = 0; i < receivedA.length; i += 1) {
-    const weighted = add(
-      mul(receivedA[i], conj(channelA[i])),
-      mul(receivedB[i], conj(channelB[i])),
-    );
-    combined.push(weighted);
+    combined.push(add(mul(receivedA[i], conj(channelA[i])), mul(receivedB[i], conj(channelB[i]))));
     denom.push(complex(abs2(channelA[i]) + abs2(channelB[i]), 0));
   }
   return { y: combined, h: denom };
@@ -299,13 +343,8 @@ function mrcCombine(receivedA, receivedB, channelA, channelB) {
 function encodeSskm(bits) {
   const encoded = new Array(bits.length * 2);
   for (let i = 0; i < bits.length; i += 1) {
-    if (bits[i] === 1) {
-      encoded[2 * i] = 1;
-      encoded[2 * i + 1] = 0;
-    } else {
-      encoded[2 * i] = 0;
-      encoded[2 * i + 1] = 1;
-    }
+    encoded[2 * i] = bits[i];
+    encoded[2 * i + 1] = bits[i] ? 0 : 1;
   }
   return encoded;
 }
@@ -318,190 +357,171 @@ function decodeSskm(bits) {
   return decoded;
 }
 
-function simulateAssignment2(config, rng) {
-  const fftSize = config.fftSize;
-  const giSize = Math.floor(fftSize * config.giRatio);
-  const dataSize = fftSize * config.modulationOrder;
-  const snrValues = createSnrRange(config.snrStart, config.snrEnd, config.snrStep);
-  const ber = [];
-
-  for (const snr of snrValues) {
-    let errors = 0;
-    for (let iter = 0; iter < config.iterations; iter += 1) {
-      const data = randomBits(dataSize, rng);
-      const modulated = baseMod(data, config.modulationOrder);
-      const ofdm = normalizeIfft(modulated);
-      const withCp = addCyclicPrefix(ofdm, giSize);
-      const channel = rayleighChannel(config.multiPath, rng);
-      const rx = addAwgn(convolve(withCp, channel), snr, rng);
-      const trimmed = removeCyclicPrefix(rx, giSize, fftSize);
-      const freq = normalizeFft(trimmed);
-      const h = channelResponse(channel, fftSize);
-      const equalized = equalize(freq, h);
-      const demod = baseDemod(equalized, config.modulationOrder).slice(0, data.length);
-      errors += countBitErrors(data, demod);
-    }
-    ber.push(errors / (dataSize * config.iterations));
-  }
-
+function getAssignment1Config() {
   return {
-    snrValues,
-    series: [
-      {
-        key: "siso",
-        label: "SISO-OFDM",
-        color: palette.siso,
-        values: ber,
-      },
-    ],
-  };
-}
-
-function simulateAssignment3(config, rng) {
-  const fftSize = config.fftSize;
-  const fftSizeSskm = fftSize * 2;
-  const giSize = Math.floor(fftSize * config.giRatio);
-  const giSizeSskm = Math.floor(fftSizeSskm * config.giRatio);
-  const dataSize = fftSize * config.modulationOrder;
-  const dataSizeSskm = dataSize * 2;
-  const snrValues = createSnrRange(config.snrStart, config.snrEnd, config.snrStep);
-  const berSc = [];
-  const berMrc = [];
-  const berSskmSc = [];
-  const berSskmMrc = [];
-
-  for (const snr of snrValues) {
-    let errorsSc = 0;
-    let errorsMrc = 0;
-    let errorsSskmSc = 0;
-    let errorsSskmMrc = 0;
-
-    for (let iter = 0; iter < config.iterations; iter += 1) {
-      const data = randomBits(dataSize, rng);
-      const modulated = baseMod(data, config.modulationOrder);
-      const ofdm = normalizeIfft(modulated);
-      const tx = addCyclicPrefix(ofdm, giSize);
-
-      const h1 = rayleighChannel(config.multiPath, rng);
-      const h2 = rayleighChannel(config.multiPath, rng);
-      const y1 = addAwgn(convolve(tx, h1), snr, rng);
-      const y2 = addAwgn(convolve(tx, h2), snr, rng);
-
-      const rx1 = normalizeFft(removeCyclicPrefix(y1, giSize, fftSize));
-      const rx2 = normalizeFft(removeCyclicPrefix(y2, giSize, fftSize));
-      const H1 = channelResponse(h1, fftSize);
-      const H2 = channelResponse(h2, fftSize);
-
-      const sc = selectCombine(rx1, rx2, H1, H2);
-      const mrc = mrcCombine(rx1, rx2, H1, H2);
-      const demodSc = baseDemod(equalize(sc.y, sc.h), config.modulationOrder).slice(0, data.length);
-      const demodMrc = baseDemod(equalize(mrc.y, mrc.h), config.modulationOrder).slice(0, data.length);
-
-      errorsSc += countBitErrors(data, demodSc);
-      errorsMrc += countBitErrors(data, demodMrc);
-
-      const dataSskm = encodeSskm(data);
-      const modulatedSskm = baseMod(dataSskm, config.modulationOrder);
-      const ofdmSskm = normalizeIfft(modulatedSskm);
-      const txSskm = addCyclicPrefix(ofdmSskm, giSizeSskm);
-      const y1Sskm = addAwgn(convolve(txSskm, h1), snr, rng);
-      const y2Sskm = addAwgn(convolve(txSskm, h2), snr, rng);
-      const rx1Sskm = normalizeFft(removeCyclicPrefix(y1Sskm, giSizeSskm, fftSizeSskm));
-      const rx2Sskm = normalizeFft(removeCyclicPrefix(y2Sskm, giSizeSskm, fftSizeSskm));
-      const H1Sskm = channelResponse(h1, fftSizeSskm);
-      const H2Sskm = channelResponse(h2, fftSizeSskm);
-
-      const scSskm = selectCombine(rx1Sskm, rx2Sskm, H1Sskm, H2Sskm);
-      const mrcSskm = mrcCombine(rx1Sskm, rx2Sskm, H1Sskm, H2Sskm);
-      const decodedSc = decodeSskm(
-        baseDemod(equalize(scSskm.y, scSskm.h), config.modulationOrder).slice(0, dataSizeSskm),
-      );
-      const decodedMrc = decodeSskm(
-        baseDemod(equalize(mrcSskm.y, mrcSskm.h), config.modulationOrder).slice(0, dataSizeSskm),
-      );
-
-      errorsSskmSc += countBitErrors(data, decodedSc);
-      errorsSskmMrc += countBitErrors(data, decodedMrc);
-    }
-
-    berSc.push(errorsSc / (dataSize * config.iterations));
-    berMrc.push(errorsMrc / (dataSize * config.iterations));
-    berSskmSc.push(errorsSskmSc / (dataSize * config.iterations));
-    berSskmMrc.push(errorsSskmMrc / (dataSize * config.iterations));
-  }
-
-  return {
-    snrValues,
-    series: [
-      { key: "sc", label: "SC", color: palette.sc, values: berSc },
-      { key: "mrc", label: "MRC", color: palette.mrc, values: berMrc },
-      { key: "sskmSc", label: "SSKM-SC", color: palette.sskmSc, values: berSskmSc },
-      { key: "sskmMrc", label: "SSKM-MRC", color: palette.sskmMrc, values: berSskmMrc },
-    ],
-  };
-}
-
-function getConfig() {
-  const config = {
-    scenario: dom.scenario.value,
-    fftSize: Number(dom.fftSize.value),
-    giRatio: Number(dom.giRatio.value),
-    modulationOrder: Number(dom.modulationOrder.value),
-    multiPath: Number(dom.multiPath.value),
-    iterations: Number(dom.iterations.value),
-    snrStart: Number(dom.snrStart.value),
-    snrEnd: Number(dom.snrEnd.value),
-    snrStep: Number(dom.snrStep.value),
+    modulationOrder: 4,
+    sampleCount: Number(dom.a1SampleCount.value),
+    channelGain: Number(dom.a1ChannelGain.value),
+    channelPhaseDeg: Number(dom.a1ChannelPhase.value),
+    noiseSigma: Number(dom.a1NoiseSigma.value),
     seed: Number(dom.seed.value),
   };
-
-  if (config.fftSize <= 0 || (config.fftSize & (config.fftSize - 1)) !== 0) {
-    throw new Error("FFT Size must be a power of two.");
-  }
-  if (config.snrEnd < config.snrStart) {
-    throw new Error("SNR End must be greater than or equal to SNR Start.");
-  }
-  if (config.snrStep <= 0) {
-    throw new Error("SNR Step must be greater than zero.");
-  }
-  if (config.modulationOrder !== 2 && config.modulationOrder !== 4) {
-    throw new Error("This web simulator currently supports QPSK and 16QAM only.");
-  }
-
-  return config;
 }
 
-function formatBer(value) {
-  return value < 0.001 ? value.toExponential(2) : value.toFixed(4);
+function getBerConfig() {
+  const scenario = dom.scenario.value;
+  return {
+    scenario,
+    ...presets[scenario],
+    targetIterations: Number(dom.berTargetIterations.value),
+    seed: Number(dom.seed.value),
+  };
 }
 
-function renderSummary(result) {
-  dom.summaryCards.innerHTML = "";
-
-  const cards = result.series.map((serie) => {
-    const best = Math.min(...serie.values);
-    const worst = Math.max(...serie.values);
-    return `
-      <div class="summary-card">
-        <div>${serie.label}</div>
-        <strong>${formatBer(best)}</strong>
-        <div>Best BER</div>
-        <div>Worst ${formatBer(worst)}</div>
-      </div>
-    `;
-  }).join("");
-
-  dom.summaryCards.innerHTML = cards;
+function updateAssignment1Labels() {
+  dom.a1SampleCountValue.textContent = dom.a1SampleCount.value;
+  dom.a1ChannelGainValue.textContent = Number(dom.a1ChannelGain.value).toFixed(2);
+  dom.a1ChannelPhaseValue.textContent = dom.a1ChannelPhase.value;
+  dom.a1NoiseSigmaValue.textContent = Number(dom.a1NoiseSigma.value).toFixed(2);
 }
 
-function renderTable(result) {
-  dom.resultsHeader.textContent = result.series.map((serie) => serie.label).join(" / ");
-  const rows = result.snrValues.map((snr, index) => {
-    const values = result.series.map((serie) => formatBer(serie.values[index])).join(" / ");
-    return `<tr><td>${snr}</td><td>${values}</td></tr>`;
-  }).join("");
+function updateBerTargetLabel() {
+  dom.berTargetIterationsValue.textContent = dom.berTargetIterations.value;
+}
 
-  dom.resultsTable.innerHTML = rows;
+function simulateAssignment1() {
+  const config = getAssignment1Config();
+  const rng = new RNG(config.seed);
+  const idealBits = [];
+  const symbolTemplates = config.modulationOrder === 2
+    ? [
+        [0, 0],
+        [0, 1],
+        [1, 0],
+        [1, 1],
+      ]
+    : [
+        [0, 0, 0, 0],
+        [0, 1, 0, 1],
+        [1, 1, 1, 1],
+        [1, 0, 1, 0],
+        [0, 0, 1, 1],
+        [0, 1, 1, 0],
+        [1, 1, 0, 0],
+        [1, 0, 0, 1],
+        [0, 0, 0, 1],
+        [0, 1, 0, 0],
+        [1, 1, 1, 0],
+        [1, 0, 1, 1],
+        [0, 0, 1, 0],
+        [0, 1, 1, 1],
+        [1, 1, 0, 1],
+        [1, 0, 0, 0],
+      ];
+
+  symbolTemplates.forEach((entry) => idealBits.push(...entry));
+  const references = baseMod(idealBits, config.modulationOrder);
+
+  const randomBitsForRx = randomBits(Math.max(config.modulationOrder, config.sampleCount), rng);
+  const transmitted = baseMod(randomBitsForRx, config.modulationOrder);
+  const phaseRad = (config.channelPhaseDeg * Math.PI) / 180;
+  const channel = complex(config.channelGain * Math.cos(phaseRad), config.channelGain * Math.sin(phaseRad));
+  const received = transmitted.map((symbol) => {
+    const faded = mul(channel, symbol);
+    const [n1, n2] = rng.normalPair();
+    return add(faded, complex(n1 * config.noiseSigma, n2 * config.noiseSigma));
+  });
+
+  const mappedBits = nearestConstellationDemod(received, config.modulationOrder).slice(0, randomBitsForRx.length);
+  const bitErrors = countBitErrors(randomBitsForRx, mappedBits);
+  const ber = bitErrors / randomBitsForRx.length;
+
+  drawConstellation(references, received);
+  dom.assignment1Status.textContent = `H = ${channel.re.toFixed(2)} ${channel.im >= 0 ? "+" : "-"} ${Math.abs(channel.im).toFixed(2)}j`;
+  dom.assignment1Metrics.innerHTML = `
+    <div class="summary-card">
+      <div>Mapped BER</div>
+      <strong>${ber < 0.001 ? ber.toExponential(2) : ber.toFixed(4)}</strong>
+      <div>Nearest reference point demodulation</div>
+    </div>
+    <div class="summary-card">
+      <div>Bit Errors</div>
+      <strong>${bitErrors}</strong>
+      <div>Out of ${randomBitsForRx.length} bits</div>
+    </div>
+    <div class="summary-card">
+      <div>Reference Size</div>
+      <strong>${references.length}</strong>
+      <div>Fixed ideal constellation points</div>
+    </div>
+  `;
+}
+
+function drawConstellation(references, received) {
+  const canvas = dom.constellationCanvas;
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  const pad = 48;
+  const points = references.concat(received);
+  const maxExtent = Math.max(1, ...points.map((point) => Math.max(Math.abs(point.re), Math.abs(point.im)))) * 1.15;
+  const toX = (value) => width / 2 + (value / maxExtent) * (width / 2 - pad);
+  const toY = (value) => height / 2 - (value / maxExtent) * (height / 2 - pad);
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#fffefb";
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.strokeStyle = "rgba(31, 26, 22, 0.12)";
+  for (let i = -2; i <= 2; i += 1) {
+    const grid = (i / 2) * maxExtent;
+    ctx.beginPath();
+    ctx.moveTo(toX(-maxExtent), toY(grid));
+    ctx.lineTo(toX(maxExtent), toY(grid));
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(toX(grid), toY(-maxExtent));
+    ctx.lineTo(toX(grid), toY(maxExtent));
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "#34291d";
+  ctx.beginPath();
+  ctx.moveTo(toX(-maxExtent), toY(0));
+  ctx.lineTo(toX(maxExtent), toY(0));
+  ctx.moveTo(toX(0), toY(-maxExtent));
+  ctx.lineTo(toX(0), toY(maxExtent));
+  ctx.stroke();
+
+  ctx.fillStyle = "#66584b";
+  ctx.font = "12px Segoe UI";
+  ctx.fillText("In-phase", width - 84, height / 2 - 8);
+  ctx.fillText("Quadrature", width / 2 + 8, 20);
+
+  ctx.fillStyle = "rgba(15, 118, 110, 0.95)";
+  references.forEach((point) => {
+    ctx.beginPath();
+    ctx.arc(toX(point.re), toY(point.im), 6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = "rgba(180, 83, 9, 0.45)";
+  received.forEach((point) => {
+    ctx.beginPath();
+    ctx.arc(toX(point.re), toY(point.im), 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function renderFixedConfig(config) {
+  dom.fixedConfig.innerHTML = [
+    `Scenario: ${config.scenario === "assignment2" ? "Assignment 2" : "Assignment 3"}`,
+    `FFT Size: ${config.fftSize}`,
+    `GI Ratio: ${config.giRatio}`,
+    `Modulation: ${config.modulationOrder === 2 ? "QPSK" : "16QAM"}`,
+    `Multipath: ${config.multiPath}`,
+    `SNR: ${config.snrStart} to ${config.snrEnd} dB, step ${config.snrStep}`,
+  ].join("<br>");
 }
 
 function renderLegend(series) {
@@ -513,23 +533,56 @@ function renderLegend(series) {
   `).join("");
 }
 
+function renderLiveCards(series, iteration, targetIterations) {
+  dom.liveCards.innerHTML = `
+    <div class="summary-card">
+      <div>Iteration Progress</div>
+      <strong>${iteration} / ${targetIterations}</strong>
+      <div>Curves are updated as batches finish.</div>
+    </div>
+    ${series.map((serie) => `
+      <div class="summary-card">
+        <div>${serie.label}</div>
+        <strong>${Math.min(...serie.values.filter((value) => value > 0)).toExponential(2)}</strong>
+        <div>Current best BER</div>
+      </div>
+    `).join("")}
+  `;
+}
+
+function renderTable(result) {
+  dom.resultsHeader.textContent = result.series.map((serie) => serie.label).join(" / ");
+  dom.resultsTable.innerHTML = result.snrValues.map((snr, index) => {
+    const values = result.series.map((serie) => {
+      const value = serie.values[index];
+      return value <= 0 ? "0" : (value < 0.001 ? value.toExponential(2) : value.toFixed(4));
+    }).join(" / ");
+    return `<tr><td>${snr}</td><td>${values}</td></tr>`;
+  }).join("");
+}
+
 function drawChart(result) {
   const canvas = dom.chartCanvas;
   const ctx = canvas.getContext("2d");
   const width = canvas.width;
   const height = canvas.height;
   const pad = { left: 72, right: 24, top: 22, bottom: 52 };
-  const minBer = 1e-4;
-  const maxBer = 1;
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
+  const xMin = result.snrValues[0];
+  const xMax = result.snrValues[result.snrValues.length - 1];
+  const xFor = (value) => xMax === xMin ? pad.left + plotWidth / 2 : pad.left + ((value - xMin) / (xMax - xMin)) * plotWidth;
+  const yFor = (value) => {
+    const clamped = Math.max(1e-4, Math.min(1, value || 1));
+    const logValue = Math.log10(clamped);
+    return pad.top + ((0 - logValue) / 4) * plotHeight;
+  };
 
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "#fffefb";
   ctx.fillRect(0, 0, width, height);
 
   ctx.strokeStyle = "rgba(31, 26, 22, 0.12)";
-  ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i += 1) {
     const y = pad.top + (plotHeight / 4) * i;
     ctx.beginPath();
@@ -538,25 +591,7 @@ function drawChart(result) {
     ctx.stroke();
   }
 
-  const xMin = result.snrValues[0];
-  const xMax = result.snrValues[result.snrValues.length - 1];
-
-  const xFor = (value) => {
-    if (xMax === xMin) {
-      return pad.left + plotWidth / 2;
-    }
-    return pad.left + ((value - xMin) / (xMax - xMin)) * plotWidth;
-  };
-
-  const yFor = (value) => {
-    const clamped = Math.max(minBer, Math.min(maxBer, value));
-    const logValue = Math.log10(clamped);
-    const ratio = (Math.log10(maxBer) - logValue) / (Math.log10(maxBer) - Math.log10(minBer));
-    return pad.top + ratio * plotHeight;
-  };
-
   ctx.strokeStyle = "#34291d";
-  ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(pad.left, pad.top);
   ctx.lineTo(pad.left, height - pad.bottom);
@@ -565,25 +600,11 @@ function drawChart(result) {
 
   ctx.fillStyle = "#66584b";
   ctx.font = "12px Segoe UI";
-  const yTicks = [1, 1e-1, 1e-2, 1e-3, 1e-4];
-  for (const tick of yTicks) {
-    const y = yFor(tick);
-    ctx.fillText(tick.toExponential(0), 16, y + 4);
-  }
+  [1, 1e-1, 1e-2, 1e-3, 1e-4].forEach((tick) => ctx.fillText(tick.toExponential(0), 16, yFor(tick) + 4));
+  result.snrValues.forEach((snr) => ctx.fillText(String(snr), xFor(snr) - 8, height - 20));
+  ctx.fillText("SNR (dB)", width / 2 - 18, height - 8);
 
-  for (const snr of result.snrValues) {
-    const x = xFor(snr);
-    ctx.fillText(String(snr), x - 8, height - 20);
-  }
-
-  ctx.save();
-  ctx.translate(18, height / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillText("BER (log scale)", 0, 0);
-  ctx.restore();
-  ctx.fillText("SNR (dB)", width / 2 - 20, height - 8);
-
-  for (const serie of result.series) {
+  result.series.forEach((serie) => {
     ctx.strokeStyle = serie.color;
     ctx.fillStyle = serie.color;
     ctx.lineWidth = 2.5;
@@ -591,71 +612,188 @@ function drawChart(result) {
     serie.values.forEach((value, index) => {
       const x = xFor(result.snrValues[index]);
       const y = yFor(value);
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     });
     ctx.stroke();
-
-    for (let index = 0; index < serie.values.length; index += 1) {
-      const x = xFor(result.snrValues[index]);
-      const y = yFor(serie.values[index]);
+    serie.values.forEach((value, index) => {
       ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.arc(xFor(result.snrValues[index]), yFor(value), 4, 0, Math.PI * 2);
       ctx.fill();
+    });
+  });
+}
+
+function createProgressSeries(config) {
+  const snrValues = createSnrRange(config.snrStart, config.snrEnd, config.snrStep);
+  if (config.scenario === "assignment2") {
+    return {
+      snrValues,
+      series: [{ key: "siso", label: "SISO-OFDM", color: palette.siso, values: Array(snrValues.length).fill(1) }],
+      errors: { siso: Array(snrValues.length).fill(0) },
+    };
+  }
+
+  return {
+    snrValues,
+    series: [
+      { key: "sc", label: "SC", color: palette.sc, values: Array(snrValues.length).fill(1) },
+      { key: "mrc", label: "MRC", color: palette.mrc, values: Array(snrValues.length).fill(1) },
+      { key: "sskmSc", label: "SSKM-SC", color: palette.sskmSc, values: Array(snrValues.length).fill(1) },
+      { key: "sskmMrc", label: "SSKM-MRC", color: palette.sskmMrc, values: Array(snrValues.length).fill(1) },
+    ],
+    errors: {
+      sc: Array(snrValues.length).fill(0),
+      mrc: Array(snrValues.length).fill(0),
+      sskmSc: Array(snrValues.length).fill(0),
+      sskmMrc: Array(snrValues.length).fill(0),
+    },
+  };
+}
+
+function runAssignment2Iteration(config, rng, state, snrIndex) {
+  const dataSize = config.fftSize * config.modulationOrder;
+  const giSize = Math.floor(config.fftSize * config.giRatio);
+  const snr = state.snrValues[snrIndex];
+  const data = randomBits(dataSize, rng);
+  const modulated = baseMod(data, config.modulationOrder);
+  const tx = addCyclicPrefix(normalizeIfft(modulated), giSize);
+  const channel = rayleighChannel(config.multiPath, rng);
+  const rx = addAwgn(convolve(tx, channel), snr, rng);
+  const equalized = equalize(normalizeFft(removeCyclicPrefix(rx, giSize, config.fftSize)), channelResponse(channel, config.fftSize));
+  state.errors.siso[snrIndex] += countBitErrors(data, baseDemod(equalized, config.modulationOrder).slice(0, data.length));
+}
+
+function runAssignment3Iteration(config, rng, state, snrIndex) {
+  const giSize = Math.floor(config.fftSize * config.giRatio);
+  const fftSizeSskm = config.fftSize * 2;
+  const giSizeSskm = Math.floor(fftSizeSskm * config.giRatio);
+  const dataSize = config.fftSize * config.modulationOrder;
+  const dataSizeSskm = dataSize * 2;
+  const snr = state.snrValues[snrIndex];
+
+  const data = randomBits(dataSize, rng);
+  const tx = addCyclicPrefix(normalizeIfft(baseMod(data, config.modulationOrder)), giSize);
+  const h1 = rayleighChannel(config.multiPath, rng);
+  const h2 = rayleighChannel(config.multiPath, rng);
+  const rx1 = normalizeFft(removeCyclicPrefix(addAwgn(convolve(tx, h1), snr, rng), giSize, config.fftSize));
+  const rx2 = normalizeFft(removeCyclicPrefix(addAwgn(convolve(tx, h2), snr, rng), giSize, config.fftSize));
+  const H1 = channelResponse(h1, config.fftSize);
+  const H2 = channelResponse(h2, config.fftSize);
+
+  const sc = selectCombine(rx1, rx2, H1, H2);
+  const mrc = mrcCombine(rx1, rx2, H1, H2);
+  state.errors.sc[snrIndex] += countBitErrors(data, baseDemod(equalize(sc.y, sc.h), config.modulationOrder).slice(0, data.length));
+  state.errors.mrc[snrIndex] += countBitErrors(data, baseDemod(equalize(mrc.y, mrc.h), config.modulationOrder).slice(0, data.length));
+
+  const dataSskm = encodeSskm(data);
+  const txSskm = addCyclicPrefix(normalizeIfft(baseMod(dataSskm, config.modulationOrder)), giSizeSskm);
+  const rx1Sskm = normalizeFft(removeCyclicPrefix(addAwgn(convolve(txSskm, h1), snr, rng), giSizeSskm, fftSizeSskm));
+  const rx2Sskm = normalizeFft(removeCyclicPrefix(addAwgn(convolve(txSskm, h2), snr, rng), giSizeSskm, fftSizeSskm));
+  const H1Sskm = channelResponse(h1, fftSizeSskm);
+  const H2Sskm = channelResponse(h2, fftSizeSskm);
+  const scSskm = selectCombine(rx1Sskm, rx2Sskm, H1Sskm, H2Sskm);
+  const mrcSskm = mrcCombine(rx1Sskm, rx2Sskm, H1Sskm, H2Sskm);
+
+  state.errors.sskmSc[snrIndex] += countBitErrors(data, decodeSskm(baseDemod(equalize(scSskm.y, scSskm.h), config.modulationOrder).slice(0, dataSizeSskm)));
+  state.errors.sskmMrc[snrIndex] += countBitErrors(data, decodeSskm(baseDemod(equalize(mrcSskm.y, mrcSskm.h), config.modulationOrder).slice(0, dataSizeSskm)));
+}
+
+function updateProgressValues(config, state, iteration) {
+  const dataSize = config.fftSize * config.modulationOrder;
+  state.series.forEach((serie) => {
+    serie.values = state.errors[serie.key].map((error) => error / (dataSize * iteration));
+  });
+}
+
+async function runBerProgress() {
+  const token = ++runToken;
+  const config = getBerConfig();
+  const rng = new RNG(config.seed);
+  const state = createProgressSeries(config);
+  renderFixedConfig(config);
+  renderLegend(state.series);
+
+  const batchSize = Math.max(5, Math.floor(config.targetIterations / 25));
+  for (let iteration = 1; iteration <= config.targetIterations; iteration += 1) {
+    for (let snrIndex = 0; snrIndex < state.snrValues.length; snrIndex += 1) {
+      if (config.scenario === "assignment2") runAssignment2Iteration(config, rng, state, snrIndex);
+      else runAssignment3Iteration(config, rng, state, snrIndex);
     }
+
+    if (iteration % batchSize === 0 || iteration === config.targetIterations) {
+      if (token !== runToken) return;
+      updateProgressValues(config, state, iteration);
+      drawChart(state);
+      renderLiveCards(state.series, iteration, config.targetIterations);
+      renderTable(state);
+      dom.statusText.textContent = `Running... ${iteration} / ${config.targetIterations}`;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  dom.statusText.textContent = `Done · ${config.targetIterations} iterations`;
+}
+
+function updateMode() {
+  const isAssignment1 = dom.scenario.value === "assignment1";
+  dom.assignment1Section.hidden = !isAssignment1;
+  dom.berSection.hidden = isAssignment1;
+  dom.berTopControls.hidden = isAssignment1;
+  dom.presetButton.textContent = isAssignment1 ? "Load A1 Default" : "Load BER Default";
+}
+
+function applyDefaults() {
+  if (dom.scenario.value === "assignment1") {
+    dom.a1SampleCount.value = "256";
+    dom.a1ChannelGain.value = "1";
+    dom.a1ChannelPhase.value = "35";
+    dom.a1NoiseSigma.value = "0.35";
+    dom.seed.value = "20260318";
+    updateAssignment1Labels();
+  } else {
+    dom.berTargetIterations.value = "500";
+    updateBerTargetLabel();
+    dom.seed.value = "20260318";
   }
 }
 
-async function runSimulation() {
+async function runCurrentMode() {
+  dom.runButton.disabled = true;
+  updateMode();
   try {
-    dom.runButton.disabled = true;
-    dom.statusText.textContent = "Running...";
-
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    const config = getConfig();
-    const rng = new RNG(config.seed);
-    const result = config.scenario === "assignment2"
-      ? simulateAssignment2(config, rng)
-      : simulateAssignment3(config, rng);
-
-    renderLegend(result.series);
-    renderSummary(result);
-    renderTable(result);
-    drawChart(result);
-    dom.statusText.textContent = `Done · ${result.snrValues.length} SNR points`;
+    if (dom.scenario.value === "assignment1") {
+      simulateAssignment1();
+    } else {
+      await runBerProgress();
+    }
   } catch (error) {
     dom.statusText.textContent = error.message;
-    dom.legend.innerHTML = "";
-    dom.summaryCards.innerHTML = "";
-    dom.resultsTable.innerHTML = "";
-    const ctx = dom.chartCanvas.getContext("2d");
-    ctx.clearRect(0, 0, dom.chartCanvas.width, dom.chartCanvas.height);
+    dom.assignment1Status.textContent = error.message;
   } finally {
     dom.runButton.disabled = false;
   }
 }
 
-function applyAssignment3Preset() {
-  dom.scenario.value = "assignment3";
-  dom.fftSize.value = 128;
-  dom.giRatio.value = "0.25";
-  dom.modulationOrder.value = 4;
-  dom.multiPath.value = 7;
-  dom.iterations.value = 300;
-  dom.snrStart.value = 0;
-  dom.snrEnd.value = 30;
-  dom.snrStep.value = 3;
-}
-
-dom.runButton.addEventListener("click", runSimulation);
-dom.fillPresetButton.addEventListener("click", () => {
-  applyAssignment3Preset();
-  runSimulation();
+dom.runButton.addEventListener("click", runCurrentMode);
+dom.presetButton.addEventListener("click", () => {
+  applyDefaults();
+  runCurrentMode();
+});
+dom.scenario.addEventListener("change", () => {
+  updateMode();
+  applyDefaults();
+  runCurrentMode();
+});
+dom.berTargetIterations.addEventListener("input", updateBerTargetLabel);
+[dom.a1SampleCount, dom.a1ChannelGain, dom.a1ChannelPhase, dom.a1NoiseSigma].forEach((input) => {
+  input.addEventListener("input", () => {
+    updateAssignment1Labels();
+    if (dom.scenario.value === "assignment1") simulateAssignment1();
+  });
 });
 
-applyAssignment3Preset();
-runSimulation();
+updateAssignment1Labels();
+updateBerTargetLabel();
+updateMode();
+runCurrentMode();

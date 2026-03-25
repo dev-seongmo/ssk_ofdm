@@ -9,85 +9,90 @@
 <body>
   <main class="app-shell">
     <section class="hero">
-      <p class="eyebrow">Interactive BER Lab</p>
+      <p class="eyebrow">Interactive Wireless Lab</p>
       <h1>SSK / OFDM Assignment Simulator</h1>
       <p class="hero-copy">
-        A browser-based playground for testing the core MATLAB assignment logic.
-        Change parameters and compare BER curves instantly.
+        Assignment 1 focuses on a live constellation view. Assignment 2 and 3 focus on how BER
+        curves settle as iteration count increases.
       </p>
     </section>
 
-    <section class="control-card">
-      <div class="control-grid">
-        <label>
-          <span>Scenario</span>
-          <select id="scenario">
-            <option value="assignment2">Assignment 2: SISO-OFDM</option>
-            <option value="assignment3" selected>Assignment 3: SC / MRC / SSKM</option>
-          </select>
-        </label>
+    <section class="control-card topbar">
+      <label class="topbar-item">
+        <span>Scenario</span>
+        <select id="scenario">
+          <option value="assignment1">Assignment 1: Constellation</option>
+          <option value="assignment2">Assignment 2: BER Build-up</option>
+          <option value="assignment3" selected>Assignment 3: BER Build-up</option>
+        </select>
+      </label>
 
+      <div id="berTopControls" class="topbar-item">
         <label>
-          <span>FFT Size</span>
-          <input id="fftSize" type="number" min="32" step="32" value="128">
-        </label>
-
-        <label>
-          <span>GI Ratio</span>
-          <select id="giRatio">
-            <option value="0.125">1/8</option>
-            <option value="0.25" selected>1/4</option>
-            <option value="0.5">1/2</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Modulation</span>
-          <select id="modulationOrder">
-            <option value="2">QPSK</option>
-            <option value="4" selected>16QAM</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Multipath</span>
-          <input id="multiPath" type="number" min="1" max="16" value="7">
-        </label>
-
-        <label>
-          <span>Iterations</span>
-          <input id="iterations" type="number" min="20" max="3000" step="20" value="300">
-        </label>
-
-        <label>
-          <span>SNR Start</span>
-          <input id="snrStart" type="number" min="0" max="30" step="1" value="0">
-        </label>
-
-        <label>
-          <span>SNR End</span>
-          <input id="snrEnd" type="number" min="0" max="36" step="1" value="30">
-        </label>
-
-        <label>
-          <span>SNR Step</span>
-          <input id="snrStep" type="number" min="1" max="12" step="1" value="3">
-        </label>
-
-        <label>
-          <span>Random Seed</span>
-          <input id="seed" type="number" min="1" step="1" value="20260318">
+          <span>Target Iterations</span>
+          <input id="berTargetIterations" type="range" min="50" max="1500" step="50" value="500">
+          <strong id="berTargetIterationsValue">500</strong>
         </label>
       </div>
 
+      <label class="topbar-item">
+        <span>Random Seed</span>
+        <input id="seed" type="number" min="1" step="1" value="20260318">
+      </label>
+
       <div class="button-row">
-        <button id="runButton" type="button">Run Simulation</button>
-        <button id="fillPresetButton" type="button" class="secondary">Load A3 Preset</button>
+        <button id="runButton" type="button">Run</button>
+        <button id="presetButton" type="button" class="secondary">Load Default</button>
       </div>
     </section>
 
-    <section class="dashboard">
-      <article class="panel chart-panel">
+    <section id="assignment1Section" class="assignment1-layout">
+      <article class="panel assignment1-side">
+        <h2>Controls</h2>
+        <label class="slider-item">
+          <span>Samples <strong id="a1SampleCountValue">256</strong></span>
+          <input id="a1SampleCount" type="range" min="32" max="1024" step="32" value="256">
+        </label>
+        <label class="slider-item">
+          <span>Channel Magnitude <strong id="a1ChannelGainValue">1.00</strong></span>
+          <input id="a1ChannelGain" type="range" min="0.2" max="2.5" step="0.05" value="1">
+        </label>
+        <label class="slider-item">
+          <span>Channel Phase (deg) <strong id="a1ChannelPhaseValue">35</strong></span>
+          <input id="a1ChannelPhase" type="range" min="-60" max="60" step="1" value="35">
+        </label>
+        <label class="slider-item">
+          <span>Noise Sigma <strong id="a1NoiseSigmaValue">0.35</strong></span>
+          <input id="a1NoiseSigma" type="range" min="0" max="1.5" step="0.01" value="0.35">
+        </label>
+        <div class="mini-note">
+          Blue points stay fixed as the ideal constellation.
+          Orange points show the received samples after channel and noise.
+        </div>
+      </article>
+
+      <article class="panel assignment1-main">
+        <div class="panel-head">
+          <h2>Constellation / Phase Plot</h2>
+          <p id="assignment1Status">Idle</p>
+        </div>
+        <canvas id="constellationCanvas" width="920" height="480" aria-label="Constellation plot"></canvas>
+        <div class="legend">
+          <div class="legend-item">
+            <span class="legend-swatch" style="background:#0f766e"></span>
+            <span>Ideal reference</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-swatch" style="background:#b45309"></span>
+            <span>Received samples</span>
+          </div>
+        </div>
+        <div id="assignment1Metrics" class="summary-cards assignment1-metrics"></div>
+      </article>
+    </section>
+
+    <section id="berSection" class="ber-layout" hidden>
+      <article class="panel ber-main">
         <div class="panel-head">
           <h2>BER Curve</h2>
           <p id="statusText">Idle</p>
@@ -96,9 +101,11 @@
         <div id="legend" class="legend"></div>
       </article>
 
-      <article class="panel summary-panel">
-        <h2>Summary</h2>
-        <div id="summaryCards" class="summary-cards"></div>
+      <article class="panel ber-side">
+        <h2>Fixed Setup</h2>
+        <div id="fixedConfig" class="fixed-config"></div>
+        <h2>Live Snapshot</h2>
+        <div id="liveCards" class="summary-cards"></div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -111,18 +118,6 @@
           </table>
         </div>
       </article>
-    </section>
-
-    <section class="notes panel">
-      <h2>Notes</h2>
-      <p>
-        This page recreates the MATLAB assignment flow in JavaScript for interactive experiments.
-        It uses a Rayleigh multipath channel, complex Gaussian noise, and one-tap equalization.
-      </p>
-      <p>
-        Assignment 3 mode computes SC, MRC, SSKM-SC, and SSKM-MRC together.
-        The default iteration count is lower than MATLAB so the browser stays responsive.
-      </p>
     </section>
   </main>
 
